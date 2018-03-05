@@ -35,7 +35,9 @@ public class Tuple implements Serializable {
                 fieldAr[i] = td.getFieldName(i);
             }
             tuple_desc = new TupleDesc(typeAr, fieldAr);
-            tuple_field = new ArrayList<Field>();
+            tuple_field = new ArrayList<Field>(td.numFields());
+            for (int i = 0; i < td.numFields(); ++i)
+                tuple_field.add(null);
         }
     }
 
@@ -77,7 +79,7 @@ public class Tuple implements Serializable {
      */
     public void setField(int i, Field f) {
         // some code goes here
-        if (i < tuple_desc.numFields() && i > 0)
+        if (i < tuple_field.size() && i >= 0)
             tuple_field.set(i, f);
     }
 
@@ -89,7 +91,7 @@ public class Tuple implements Serializable {
      */
     public Field getField(int i) {
         // some code goes here
-        if (i < tuple_desc.numFields() && i > 0)
+        if (i < tuple_field.size() && i >= 0)
             return tuple_field.get(i);
         return null;
     }

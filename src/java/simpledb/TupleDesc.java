@@ -133,12 +133,12 @@ public class TupleDesc implements Serializable {
      */
     public int fieldNameToIndex(String name) throws NoSuchElementException {
         // some code goes here
-        int i = -1;
+        int i;
         for (i = 0; i < tuple_desc.size(); ++i) {
-            if (tuple_desc.get(i).equals(name))
+            if (tuple_desc.get(i).fieldName != null && tuple_desc.get(i).fieldName.equals(name))
                 break;
         }
-        if (i == -1)
+        if (i == tuple_desc.size())
             throw new NoSuchElementException("invalid name!");
         return i;
     }
