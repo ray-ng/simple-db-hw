@@ -2,6 +2,7 @@ package simpledb;
 
 import java.io.*;
 
+import java.util.LinkedHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -26,6 +27,21 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
+    private LinkedHashMap<PageId, Integer> pageid2index;
+    private LinkedHashMap<TransactionId, Integer> txnid2index;
+    private class pageitem {
+        public TransactionId txnid;
+        public PageId pgid;
+        public Permissions perms;
+        public pageitem(TransactionId txnid, PageId pgid, Permissions perms) {
+            this.txnid = txnid;
+            this.pgid = pgid;
+            this.perms = perms;
+        }
+    }
+
+    private pageitem[] pagearray;
+
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -33,6 +49,9 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
+        pagearray = new pageitem[numPages];
+        pageid2index = new LinkedHashMap<PageId, Integer>();
+        txnid2index = new LinkedHashMap<TransactionId, Integer>();
     }
     
     public static int getPageSize() {
@@ -65,8 +84,18 @@ public class BufferPool {
      * @param perm the requested permissions on the page
      */
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
-        throws TransactionAbortedException, DbException {
+        throws TransactionAbortedException, DbException,InterruptedException {
         // some code goes here
+        synchronized (pid) {
+            Integer idx = pageid2index.get(pid);
+            if (idx == null)
+                throw new DbException("");
+            pageitem temp = pagearray[idx];
+            while (temp.txnid != null)
+                pid.wait();
+            temp.txnid = tid;
+            temp.perms = perm;
+        }
         return null;
     }
 
