@@ -18,8 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Catalog {
 
-    LinkedHashMap<Integer, CLItem> table_list_id;
-    LinkedHashMap<String,CLItem> table_list_name;
+    private LinkedHashMap<Integer, CLItem> table_list_id;
+    private LinkedHashMap<String,CLItem> table_list_name;
 
     /**
      * Constructor.
