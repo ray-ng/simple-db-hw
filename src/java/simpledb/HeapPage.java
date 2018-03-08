@@ -22,6 +22,30 @@ public class HeapPage implements Page {
     byte[] oldData;
     private final Byte oldDataLock=new Byte((byte)0);
 
+    private class itr implements Iterator<Tuple> {
+        int cursor;
+
+        public itr() {
+            cursor = 0;
+        }
+
+        public Tuple next() {
+            if (cursor == tuples.length)
+                return null;
+            return tuples[cursor++];
+        }
+
+        public boolean hasNext() {
+            while (cursor < tuples.length && !isSlotUsed(cursor)) {
+                ++cursor;
+            }
+            if (cursor < tuples.length)
+                return true;
+            else
+                return false;
+        }
+    }
+
     /**
      * Create a HeapPage from a set of bytes of data read from disk.
      * The format of a HeapPage is a set of header bytes indicating
@@ -67,8 +91,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
-
+        return (BufferPool.getPageSize() * 8) / (td.getSize() * 8 + 1);
     }
 
     /**
@@ -78,7 +101,8 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
+
+        return (int)Math.ceil(getNumTuples() / 8);
                  
     }
     
@@ -112,7 +136,8 @@ public class HeapPage implements Page {
      */
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+//    throw new UnsupportedOperationException("implement this");
+        return pid;
     }
 
     /**
@@ -282,7 +307,12 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int cnt = 0;
+        for (int i = 0; i < tuples.length; ++i) {
+            if (!isSlotUsed(i))
+                ++cnt;
+        }
+        return cnt;
     }
 
     /**
@@ -290,7 +320,10 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+        int headeridx = i / 8;
+        int bitidx = i % 8;
+        byte temp = header[headeridx];
+        return ((temp >> bitidx) & 1) == 1;
     }
 
     /**
@@ -307,7 +340,7 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        return new itr();
     }
 
 }
