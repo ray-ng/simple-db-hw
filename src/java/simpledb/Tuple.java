@@ -66,7 +66,7 @@ public class Tuple implements Serializable {
      */
     public void setRecordId(RecordId rid) {
         // some code goes here
-        record_id = new RecordId(rid.getPageId(), rid.getTupleNumber());
+        record_id = rid;
     }
 
     /**
