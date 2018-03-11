@@ -2,7 +2,9 @@ package simpledb;
 
 import java.io.*;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Stack;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -29,18 +31,22 @@ public class BufferPool {
 
     private LinkedHashMap<PageId, Integer> pageid2index;
     private LinkedHashMap<TransactionId, Integer> txnid2index;
+
     private class pageitem {
         public TransactionId txnid;
         public PageId pgid;
         public Permissions perms;
-        public pageitem(TransactionId txnid, PageId pgid, Permissions perms) {
+        public Page pagefile;
+        public pageitem(TransactionId txnid, PageId pgid, Permissions perms, Page pagefile) {
             this.txnid = txnid;
             this.pgid = pgid;
             this.perms = perms;
+            this.pagefile = pagefile;
         }
     }
 
     private pageitem[] pagearray;
+    private Stack<Integer> valididx;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -52,6 +58,10 @@ public class BufferPool {
         pagearray = new pageitem[numPages];
         pageid2index = new LinkedHashMap<PageId, Integer>();
         txnid2index = new LinkedHashMap<TransactionId, Integer>();
+        valididx = new Stack<Integer>();
+        for (int i = 0; i < numPages; ++i) {
+            valididx.push(i);
+        }
     }
     
     public static int getPageSize() {
@@ -86,17 +96,31 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException,InterruptedException {
         // some code goes here
+        Page pagefile = null;
         synchronized (pid) {
             Integer idx = pageid2index.get(pid);
-            if (idx == null)
-                throw new DbException("");
-            pageitem temp = pagearray[idx];
-            while (temp.txnid != null)
-                pid.wait();
-            temp.txnid = tid;
-            temp.perms = perm;
+            if (idx == null) {
+                DbFile databasefile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+                pagefile = databasefile.readPage(pid);
+                if (!valididx.isEmpty()) {
+                    Integer tempidx = valididx.pop();
+                    pageid2index.put(pid, tempidx);
+                    txnid2index.put(tid, tempidx);
+                    pagearray[tempidx] = new pageitem(tid, pid, perm, pagefile);
+                }
+                else
+                    throw new DbException("no enough space!");
+            }
+            else {
+                pageitem temp = pagearray[idx];
+                while ((temp.txnid != null) && (temp.txnid != tid))
+                    pid.wait();
+                temp.txnid = tid;
+                temp.perms = perm;
+                pagefile = temp.pagefile;
+            }
         }
-        return null;
+        return pagefile;
     }
 
     /**

@@ -30,9 +30,9 @@ public class HeapPage implements Page {
         }
 
         public Tuple next() {
-            if (cursor == tuples.length)
-                return null;
-            return tuples[cursor++];
+            if (cursor < tuples.length)
+                return tuples[cursor++];
+            return null;
         }
 
         public boolean hasNext() {
