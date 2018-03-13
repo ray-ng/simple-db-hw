@@ -94,10 +94,10 @@ public class BufferPool {
      * @param perm the requested permissions on the page
      */
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
-        throws TransactionAbortedException, DbException,InterruptedException {
+        throws TransactionAbortedException, DbException {
         // some code goes here
         Page pagefile = null;
-        synchronized (pid) {
+//        synchronized (pid) {
             Integer idx = pageid2index.get(pid);
             if (idx == null) {
                 DbFile databasefile = Database.getCatalog().getDatabaseFile(pid.getTableId());
@@ -113,13 +113,13 @@ public class BufferPool {
             }
             else {
                 pageitem temp = pagearray[idx];
-                while ((temp.txnid != null) && (temp.txnid != tid))
-                    pid.wait();
-                temp.txnid = tid;
-                temp.perms = perm;
+//                while ((temp.txnid != null) && (temp.txnid != tid))
+//                    pid.wait();
+//                temp.txnid = tid;
+//                temp.perms = perm;
                 pagefile = temp.pagefile;
             }
-        }
+//        }
         return pagefile;
     }
 

@@ -17,88 +17,59 @@ public class HeapFile implements DbFile {
 
     private File storefile;
     private TupleDesc tuple_desc;
-    private int page_tuple_num;
-    private int page_header_size;
+//    private int page_tuple_num;
+//    private int page_header_size;
     private int page_num;
     private int page_size;
-    private byte[] totalheader;
+//    private byte[] totalheader;
 
     private class itr implements DbFileIterator {
         private TransactionId txnid;
-        private int cursor;
-        private byte[] tempheader;
+        private Iterator<Tuple> fileitr;
+        private int pageopened;
 
         public itr(TransactionId txnid) {
             this.txnid = txnid;
-            cursor = 0;
-            tempheader = null;
+            this.fileitr = null;
+            this.pageopened = 0;
         }
 
-        private boolean isSlotUsed(int i) {
-            // some code goes here
-            int headeridx = i / 8;
-            int bitidx = i % 8;
-            byte temp = totalheader[headeridx];
-            return ((temp >> bitidx) & 1) == 1;
+        public void open() throws DbException, TransactionAbortedException{
+            PageId pageid = new HeapPageId(getId(), 0);
+            HeapPage filepage = (HeapPage)Database.getBufferPool().getPage(txnid, pageid, Permissions.READ_ONLY);
+            fileitr = filepage.iterator();
         }
 
-        private PageId getpageid(int i) {
-            int pagenum = i / page_tuple_num;
-            int tableid = getId();
-            return new HeapPageId(tableid, pagenum);
-        }
-
-        public void open() {
-            try {
-                byte[] temp = new byte[page_header_size];
-                FileInputStream f = new FileInputStream(storefile);
-                tempheader = totalheader;
-                for (int i = 0; i < page_num; ++i) {
-                    int cnt = 0;
-                    while (cnt != page_header_size) {
-                        cnt += f.read(temp, cnt, page_header_size-cnt);
-                    }
-                    System.arraycopy(temp, 0, tempheader, i*page_header_size, page_header_size);
-                    f.skip(page_size-page_header_size);
-                }
-            }
-            catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public boolean hasNext() {
-            if (tempheader == null)
+        public boolean hasNext() throws DbException, TransactionAbortedException{
+            if (fileitr == null)
                 return false;
-            while (cursor < totalheader.length && !isSlotUsed(cursor)) {
-                ++cursor;
-            }
-            if (cursor < totalheader.length)
+            if (fileitr.hasNext() || pageopened<page_num-1)
                 return true;
             return false;
         }
 
-        public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException{
-            if (tempheader == null)
-                throw new NoSuchElementException("haven't opened!");
-            if (cursor < totalheader.length) {
-                try {
-                    HeapPage temp = (HeapPage) Database.getBufferPool().getPage(txnid, getpageid(cursor), Permissions.READ_WRITE);
-                    return temp.tuples[cursor++];
-                }
-                catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-            throw  new NoSuchElementException("no more tuple!");
+        public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
+            if (fileitr == null)
+                throw new NoSuchElementException();
+            if (fileitr.hasNext())
+                return fileitr.next();
+
+            ++pageopened;
+            PageId pageid = new HeapPageId(getId(), pageopened);
+            HeapPage filepage = (HeapPage)Database.getBufferPool().getPage(txnid, pageid, Permissions.READ_ONLY);
+            fileitr = filepage.iterator();
+
+            return fileitr.next();
         }
 
-        public void rewind() {
-            cursor = 0;
+        public void rewind() throws DbException, TransactionAbortedException {
+            open();
+            pageopened = 0;
         }
 
         public void close() {
-            tempheader = null;
+            pageopened = 0;
+            fileitr = null;
         }
     }
 
@@ -113,11 +84,13 @@ public class HeapFile implements DbFile {
         // some code goes here
         storefile = f;
         tuple_desc = td;
-        page_tuple_num = (BufferPool.getPageSize() * 8) / (tuple_desc.getSize() * 8 + 1);
-        page_header_size = (int)Math.ceil(page_tuple_num / 8);
+//        page_tuple_num = (BufferPool.getPageSize() * 8) / (tuple_desc.getSize() * 8 + 1);
+//        page_header_size = (int)Math.ceil(page_tuple_num / 8);
         page_size = BufferPool.getPageSize();
-        page_num = (int)Math.ceil(storefile.length()/page_size);
-        totalheader = new byte[page_header_size * page_num];
+        page_num = (int)(storefile.length()/page_size);
+        if (storefile.length()%page_size != 0)
+            ++page_num;
+//        totalheader = new byte[page_header_size * page_num];
     }
 
     /**
@@ -170,7 +143,7 @@ public class HeapFile implements DbFile {
             while (cnt != pagesize) {
                 cnt += f.read(temp, cnt, pagesize-cnt);
             }
-            heapPage = new HeapPage(new HeapPageId(pid.getTableId(), pid.getPageNumber()), temp);
+            heapPage = new HeapPage((HeapPageId)pid, temp);
         }
         catch (IOException e) {
             e.printStackTrace();
@@ -212,6 +185,7 @@ public class HeapFile implements DbFile {
     public DbFileIterator iterator(TransactionId tid) {
         // some code goes here
         return new itr(tid);
+
     }
 
 }

@@ -102,7 +102,7 @@ public class HeapPage implements Page {
         
         // some code goes here
 
-        return (int)Math.ceil(getNumTuples() / 8);
+        return (int)Math.ceil(getNumTuples() / 8.0);
                  
     }
     
@@ -320,10 +320,13 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        int headeridx = i / 8;
-        int bitidx = i % 8;
-        byte temp = header[headeridx];
-        return ((temp >> bitidx) & 1) == 1;
+        if (i < numSlots) {
+            int headeridx = i / 8;
+            int bitidx = i % 8;
+            byte temp = header[headeridx];
+            return ((temp >> bitidx) & 1) == 1;
+        }
+        return false;
     }
 
     /**
