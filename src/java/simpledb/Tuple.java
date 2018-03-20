@@ -34,7 +34,7 @@ public class Tuple implements Serializable {
                 typeAr[i] = td.getFieldType(i);
                 fieldAr[i] = td.getFieldName(i);
             }
-            tuple_desc = new TupleDesc(typeAr, fieldAr);
+            tuple_desc = td;
             tuple_field = new ArrayList<Field>(td.numFields());
             for (int i = 0; i < td.numFields(); ++i)
                 tuple_field.add(null);
