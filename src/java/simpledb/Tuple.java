@@ -28,12 +28,6 @@ public class Tuple implements Serializable {
     public Tuple(TupleDesc td) {
         // some code goes here
         if (td.numFields() != 0) {
-            Type[] typeAr = new Type[td.numFields()];
-            String[] fieldAr = new String[td.numFields()];
-            for (int i = 0; i < td.numFields(); ++i) {
-                typeAr[i] = td.getFieldType(i);
-                fieldAr[i] = td.getFieldName(i);
-            }
             tuple_desc = td;
             tuple_field = new ArrayList<Field>(td.numFields());
             for (int i = 0; i < td.numFields(); ++i)
