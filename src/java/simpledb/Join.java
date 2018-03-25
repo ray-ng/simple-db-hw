@@ -31,6 +31,7 @@ public class Join extends Operator {
         this.p = p;
         this.child1 = child1;
         this.child2 = child2;
+        children = new OpIterator[]{child1, child2};
     }
 
     public JoinPredicate getJoinPredicate() {
