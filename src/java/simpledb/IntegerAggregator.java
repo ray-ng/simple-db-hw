@@ -16,8 +16,9 @@ public class IntegerAggregator implements Aggregator {
     private TupleDesc tupledesc;
 
     private ArrayList<Tuple> mergelist;
-    private HashMap<Integer, Integer> gbval2idx;
-    private HashMap<Integer, Integer> gbval2cnt;
+    private HashMap<String, Integer> gbval2idx;
+    private HashMap<String, Integer> gbval2cnt;
+    private HashMap<String, Integer> gbval2sum;
 
     private class itr implements OpIterator {
 
@@ -78,11 +79,12 @@ public class IntegerAggregator implements Aggregator {
         this.afield = afield;
         this.what = what;
         this.mergelist = new ArrayList<Tuple>();
-        this.gbval2idx = new HashMap<Integer, Integer>();
-        this.gbval2cnt = new HashMap<Integer, Integer>();
+        this.gbval2idx = new HashMap<String, Integer>();
+        this.gbval2cnt = new HashMap<String, Integer>();
+        this.gbval2sum = new HashMap<String, Integer>();
         Type[] typeAr1 = {Type.INT_TYPE};
-        Type[] typeAr2 = {Type.INT_TYPE, Type.INT_TYPE};
-        if (gbfieldtype != null)
+        Type[] typeAr2 = {gbfieldtype, Type.INT_TYPE};
+        if (gbfield != Aggregator.NO_GROUPING)
             tupledesc = new TupleDesc(typeAr2);
         else
             tupledesc = new TupleDesc(typeAr1);
@@ -97,22 +99,15 @@ public class IntegerAggregator implements Aggregator {
      */
     public void mergeTupleIntoGroup(Tuple tup) {
         // some code goes here
-        if (gbfieldtype != null) {
+        if (gbfield != Aggregator.NO_GROUPING) {
+//            System.out.println("is--grouping");
             Field avalfield = tup.getField(afield);
             Field gbvalfield = tup.getField(gbfield);
-            int gbval = gbvalfield.hashCode();
+            String gbval = gbvalfield.toString();
             int aval = avalfield.hashCode();
             Integer idx = gbval2idx.get(gbval);
             Integer cnt = gbval2cnt.get(gbval);
-            if (idx == null) {
-                Tuple temp = new Tuple(tupledesc);
-                temp.setField(0, gbvalfield);
-                temp.setField(1, avalfield);
-                mergelist.add(temp);
-                gbval2idx.put(gbval, mergelist.size()-1);
-                gbval2cnt.put(gbval, 1);
-            }
-            else {
+            if (idx != null) {
                 Tuple idxtuple = mergelist.get(idx);
                 int tempaval = idxtuple.getField(1).hashCode();
                 switch (what) {
@@ -129,31 +124,41 @@ public class IntegerAggregator implements Aggregator {
                     case SUM:
                         idxtuple.setField(1, new IntField(tempaval + aval));
                         gbval2cnt.put(gbval, cnt+1);
+                        gbval2sum.put(gbval, tempaval + aval);
                         break;
                     case AVG:
-                        idxtuple.setField(1, new IntField((tempaval*cnt+aval)/(cnt+1)));
+                        int tempsum = gbval2sum.get(gbval);
+                        gbval2sum.put(gbval, tempsum + aval);
+//                        idxtuple.setField(1, new IntField((tempaval*cnt+aval)/(cnt+1)));
                         gbval2cnt.put(gbval, cnt+1);
+                        idxtuple.setField(1, new IntField((tempsum+aval)/(cnt+1)));
+                        break;
                     case COUNT:
                         idxtuple.setField(1, new IntField(tempaval+1));
                         gbval2cnt.put(gbval, cnt+1);
+                        break;
                 }
+            }
+            else {
+                Tuple temp = new Tuple(tupledesc);
+                temp.setField(0, gbvalfield);
+                temp.setField(1, avalfield);
+                if (what == Op.COUNT)
+                    temp.setField(1, new IntField(1));
+                mergelist.add(temp);
+                gbval2idx.put(gbval, mergelist.size()-1);
+                gbval2cnt.put(gbval, 1);
+                gbval2sum.put(gbval, aval);
             }
         }
         else {
+//            System.out.println("no--grouping");
             Field avalfield = tup.getField(afield);
             int aval = avalfield.hashCode();
-            Integer idx = gbval2idx.get(0);
-            Integer cnt = gbval2cnt.get(0);
-            if (idx == null) {
-                Tuple temp = new Tuple(tupledesc);
-                temp.setField(0, avalfield);
-                mergelist.add(temp);
-                gbval2idx.put(0, mergelist.size()-1);
-                gbval2cnt.put(0, 1);
-            }
-            else {
-                Tuple idxtuple = mergelist.get(idx);
+            if (!mergelist.isEmpty()) {
+                Tuple idxtuple = mergelist.get(0);
                 int tempaval = idxtuple.getField(0).hashCode();
+                int cnt = gbval2cnt.get("0");
                 switch (what) {
                     case MIN:
                         if (aval < tempaval) {
@@ -167,15 +172,36 @@ public class IntegerAggregator implements Aggregator {
                         break;
                     case SUM:
                         idxtuple.setField(0, new IntField(tempaval + aval));
-                        gbval2cnt.put(0, cnt+1);
+                        gbval2cnt.put("0", cnt+1);
+                        gbval2sum.put("0", tempaval + aval);
                         break;
                     case AVG:
-                        idxtuple.setField(0, new IntField((tempaval*cnt+aval)/(cnt+1)));
-                        gbval2cnt.put(0, cnt+1);
+//                        idxtuple.setField(0, new IntField((tempaval*cnt+aval)/(cnt+1)));
+//                        gbval2cnt.put("0", cnt+1);
+//                        break;
+                        int tempsum = gbval2sum.get("0");
+                        gbval2sum.put("0", tempsum + aval);
+//                        idxtuple.setField(1, new IntField((tempaval*cnt+aval)/(cnt+1)));
+                        gbval2cnt.put("0", cnt+1);
+                        idxtuple.setField(0, new IntField((tempsum+aval)/(cnt+1)));
+                        break;
                     case COUNT:
+//                        idxtuple.setField(0, new IntField(tempaval+1));
+//                        gbval2cnt.put("0", cnt+1);
+//                        break;
                         idxtuple.setField(0, new IntField(tempaval+1));
-                        gbval2cnt.put(0, cnt+1);
+                        gbval2cnt.put("0", cnt+1);
+                        break;
                 }
+            }
+            else {
+                Tuple temp = new Tuple(tupledesc);
+                temp.setField(0, avalfield);
+                if (what == Op.COUNT)
+                    temp.setField(0, new IntField(1));
+                mergelist.add(temp);
+                gbval2cnt.put("0", 1);
+                gbval2sum.put("0", aval);
             }
         }
     }
