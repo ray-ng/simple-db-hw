@@ -93,13 +93,15 @@ public class Aggregate extends Operator {
 //                System.out.println("here");
                 result.mergeTupleIntoGroup(child.next());
             }
-            child.close();
         }
         catch (DbException e) {
             e.printStackTrace();
         }
         catch (TransactionAbortedException e) {
             e.printStackTrace();
+        }
+        finally {
+            child.close();
         }
         itr = result.iterator();
     }
