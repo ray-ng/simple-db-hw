@@ -203,6 +203,7 @@ public class Aggregate extends Operator {
 
     public void close() {
 	// some code goes here
+        super.close();
         itr.close();
     }
 
