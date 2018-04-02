@@ -272,7 +272,7 @@ public class HeapPage implements Page {
         // some code goes here
         // not necessary for lab1
         int idx = t.getRecordId().getTupleNumber();
-        if (!t.getRecordId().getPageId().equals(pid) || !isSlotUsed(idx))
+        if (!pid.equals(t.getRecordId().getPageId()) || !isSlotUsed(idx))
             throw new DbException("error delete");
         markSlotUsed(idx, false);
     }

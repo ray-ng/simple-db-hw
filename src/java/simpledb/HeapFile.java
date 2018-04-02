@@ -44,21 +44,28 @@ public class HeapFile implements DbFile {
         public boolean hasNext() throws DbException, TransactionAbortedException{
             if (fileitr == null)
                 return false;
-            if (fileitr.hasNext() || pageopened<numPages()-1)
+            if (fileitr.hasNext())
                 return true;
+            if (pageopened<numPages()-1) {
+                ++pageopened;
+                PageId pageid = new HeapPageId(getId(), pageopened);
+                HeapPage filepage = (HeapPage)Database.getBufferPool().getPage(txnid, pageid, Permissions.READ_ONLY);
+                fileitr = filepage.iterator();
+                return fileitr.hasNext();
+            }
             return false;
         }
 
         public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
             if (fileitr == null)
                 throw new NoSuchElementException();
-            if (fileitr.hasNext())
-                return fileitr.next();
-
-            ++pageopened;
-            PageId pageid = new HeapPageId(getId(), pageopened);
-            HeapPage filepage = (HeapPage)Database.getBufferPool().getPage(txnid, pageid, Permissions.READ_ONLY);
-            fileitr = filepage.iterator();
+//            if (fileitr.hasNext())
+//                return fileitr.next();
+//
+//            ++pageopened;
+//            PageId pageid = new HeapPageId(getId(), pageopened);
+//            HeapPage filepage = (HeapPage)Database.getBufferPool().getPage(txnid, pageid, Permissions.READ_ONLY);
+//            fileitr = filepage.iterator();
 
             return fileitr.next();
         }
