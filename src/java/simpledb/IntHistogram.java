@@ -20,8 +20,31 @@ public class IntHistogram {
      * @param min The minimum integer value that will ever be passed to this class for histogramming
      * @param max The maximum integer value that will ever be passed to this class for histogramming
      */
+
+    private int buckets;
+    private int min;
+    private int max;
+    private int ntups = 0;
+    private int gaplenth;
+    private int[] numperbucket;
+    private int[] lowerbound;
+    private int[] upperbound;
+
     public IntHistogram(int buckets, int min, int max) {
     	// some code goes here
+        this.buckets = buckets;
+        this.min = min;
+        this.max = max;
+        this.numperbucket = new int[buckets];
+        this.lowerbound = new int[buckets];
+        this.upperbound = new int[buckets];
+        this.gaplenth = (max - min + 1) / buckets;
+//        boundnode[0] = min;
+//        boundnode[buckets] = max;
+        for (int i = 0; i < buckets; i++) {
+            lowerbound[i] = min + gaplenth * i;
+            upperbound[i] = min + gaplenth - 1 + gaplenth * i;
+        }
     }
 
     /**
@@ -30,6 +53,25 @@ public class IntHistogram {
      */
     public void addValue(int v) {
     	// some code goes here
+//        System.out.println(v);
+//        for (int i = 0; i < buckets; i++) {
+//            if (v >= boundnode[i] && v < boundnode[i+1]) {
+//                ++numperbucket[i];
+//                return;
+//            }
+//        }
+//        if (v == max)
+//            ++numperbucket[buckets-1];
+        if (v <= max && v >= min) {
+            ++ntups;
+            int idx = (v - min) / gaplenth;
+            if (idx < buckets)
+                ++numperbucket[idx];
+            else
+                ++numperbucket[buckets-1];
+        }
+//        else if (v == max)
+//            ++numperbucket[buckets-1];
     }
 
     /**
@@ -45,7 +87,75 @@ public class IntHistogram {
     public double estimateSelectivity(Predicate.Op op, int v) {
 
     	// some code goes here
-        return -1.0;
+        double result = 0.0;
+//        for ( ; i < buckets; i++) {
+//            if (v >= boundnode[i] && v < boundnode[i+1]) {
+        if (v < min) {
+            switch (op) {
+                case EQUALS:
+                case LESS_THAN:
+                case LESS_THAN_OR_EQ:
+                    result = 0.0;
+                    break;
+                case GREATER_THAN:
+                case GREATER_THAN_OR_EQ:
+                case NOT_EQUALS:
+                    result = 1.0;
+                    break;
+            }
+        }
+        else if (v <= max) {
+            int i = (v - min) / gaplenth;
+            i = (i < buckets) ? i : buckets - 1;
+            switch (op) {
+                case EQUALS:
+                    result = (double) numperbucket[i] / (double) (gaplenth * ntups);
+                    break;
+                case GREATER_THAN:
+                    result = (double) (upperbound[i] - v) * numperbucket[i] / (double) (gaplenth * ntups);
+                    for (int j = i + 1; j < buckets; j++) {
+                        result += ((double) (numperbucket[j]) / (double) ntups);
+                    }
+                    break;
+                case LESS_THAN:
+                    result = (double) (v - lowerbound[i]) * numperbucket[i] / (double) (gaplenth * ntups);
+                    for (int j = i - 1; j >= 0; j--) {
+                        result += ((double) (numperbucket[j]) / (double) ntups);
+                    }
+                    break;
+                case LESS_THAN_OR_EQ:
+                    result = (double) (v - lowerbound[i] + 1) * numperbucket[i] / (double) (gaplenth * ntups);
+                    for (int j = i - 1; j >= 0; j--) {
+                        result += ((double) (numperbucket[j]) / (double) ntups);
+                    }
+                    break;
+                case GREATER_THAN_OR_EQ:
+                    result = (double) (upperbound[i] - v + 1) * numperbucket[i] / (double) (gaplenth * ntups);
+                    for (int j = i + 1; j < buckets; j++) {
+                        result += ((double) (numperbucket[j]) / (double) ntups);
+                    }
+                    break;
+                case NOT_EQUALS:
+                    result = 1.0 - (double) numperbucket[i] / (double) (gaplenth * ntups);
+                    break;
+            }
+        }
+        else {
+            switch (op) {
+                case NOT_EQUALS:
+                case LESS_THAN:
+                case LESS_THAN_OR_EQ:
+                    result = 1.0;
+                    break;
+                case GREATER_THAN:
+                case GREATER_THAN_OR_EQ:
+                case EQUALS:
+                    result = 0.0;
+                    break;
+            }
+        }
+        return result;
+//        return -1.0;
     }
     
     /**
