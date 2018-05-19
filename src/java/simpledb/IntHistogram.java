@@ -32,13 +32,13 @@ public class IntHistogram {
 
     public IntHistogram(int buckets, int min, int max) {
     	// some code goes here
-        this.buckets = buckets;
+        this.buckets = buckets > (max - min + 1) ? (max - min + 1) : buckets;
         this.min = min;
         this.max = max;
         this.numperbucket = new int[buckets];
         this.lowerbound = new int[buckets];
         this.upperbound = new int[buckets];
-        this.gaplenth = (max - min + 1) / buckets;
+        this.gaplenth = (max - min + 1) / this.buckets;
 //        boundnode[0] = min;
 //        boundnode[buckets] = max;
         for (int i = 0; i < buckets; i++) {

@@ -1,8 +1,6 @@
 package simpledb;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -76,6 +74,16 @@ public class TableStats {
      *            The cost per page of IO. This doesn't differentiate between
      *            sequential-scan IO and disk seeks.
      */
+
+    private int ioCostPerPage;
+    private int tableid;
+    private DbFile dbfile;
+    private TupleDesc tupledesc;
+    private int numfields;
+    private int numtuples = 0;
+    private ConcurrentHashMap<Integer, IntHistogram> inthistMap = new ConcurrentHashMap<Integer, IntHistogram>();
+    private ConcurrentHashMap<Integer, StringHistogram> strhistMap = new ConcurrentHashMap<Integer, StringHistogram>();
+
     public TableStats(int tableid, int ioCostPerPage) {
         // For this function, you'll have to get the
         // DbFile for the table in question,
@@ -85,6 +93,75 @@ public class TableStats {
         // necessarily have to (for example) do everything
         // in a single scan of the table.
         // some code goes here
+        this.ioCostPerPage = ioCostPerPage;
+        this.tableid = tableid;
+        this.dbfile = Database.getCatalog().getDatabaseFile(tableid);
+        this.tupledesc = dbfile.getTupleDesc();
+        this.numfields = tupledesc.numFields();
+        ArrayList<Integer> intidx = new ArrayList<Integer>();
+        int tempcnt = 0;
+        for (int i = 0; i < numfields; i++) {
+            if (tupledesc.getFieldType(i) == Type.INT_TYPE) {
+                intidx.add(i);
+                ++tempcnt;
+            }
+        }
+        int[] minarray = new int[numfields];
+        int[] maxarray = new int[numfields];
+        for (int i = 0; i < numfields; i++) {
+            minarray[i] = Integer.MAX_VALUE;
+            maxarray[i] = Integer.MIN_VALUE;
+        }
+        TransactionId tid = new TransactionId();
+        try {
+            DbFileIterator itr = dbfile.iterator(tid);
+            itr.open();
+            while (itr.hasNext()) {
+                ++numtuples;
+//                System.out.println(numtuples);
+                Tuple temptuple = itr.next();
+                for (int i = 0; i < tempcnt; i++) {
+                    int tempidx = intidx.get(i);
+                    int tempvalue = temptuple.getField(tempidx).hashCode();
+                    if (tempvalue < minarray[tempidx])
+                        minarray[tempidx] = tempvalue;
+                    if (tempvalue > maxarray[tempidx])
+                        maxarray[tempidx] = tempvalue;
+                }
+            }
+            itr.close();
+//            for (int i = 0; i < tempcnt; i++) {
+//                System.out.print(minarray[i] + " ");
+//                System.out.println();
+//                System.out.print(maxarray[i] + " ");
+//                System.out.println();
+//            }
+            for (int i = 0; i < numfields; i++) {
+                if (tupledesc.getFieldType(i) == Type.INT_TYPE) {
+                    IntHistogram tempinthist = new IntHistogram(NUM_HIST_BINS, minarray[i], maxarray[i]);
+                    inthistMap.put(i, tempinthist);
+                }
+                else {
+                    StringHistogram tempstrhist = new StringHistogram(NUM_HIST_BINS);
+                    strhistMap.put(i, tempstrhist);
+                }
+
+            }
+            itr = dbfile.iterator(tid);
+            itr.open();
+            while (itr.hasNext()) {
+                Tuple temptuple = itr.next();
+                for (int i = 0; i < tempcnt; i++) {
+                    int tempidx = intidx.get(i);
+                    int tempvalue = temptuple.getField(tempidx).hashCode();
+                    IntHistogram tempinthist = inthistMap.get(tempidx);
+                    tempinthist.addValue(tempvalue);
+                }
+            }
+            itr.close();
+        }
+        catch (DbException e) {}
+        catch (TransactionAbortedException e) {}
     }
 
     /**
@@ -101,7 +178,9 @@ public class TableStats {
      */
     public double estimateScanCost() {
         // some code goes here
-        return 0;
+        HeapFile tempheapfile = (HeapFile)dbfile;
+
+        return tempheapfile.numPages() * ioCostPerPage;
     }
 
     /**
@@ -115,7 +194,8 @@ public class TableStats {
      */
     public int estimateTableCardinality(double selectivityFactor) {
         // some code goes here
-        return 0;
+//        System.out.println(numtuples);
+        return (int)(numtuples * selectivityFactor);
     }
 
     /**
@@ -148,7 +228,15 @@ public class TableStats {
      */
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
         // some code goes here
-        return 1.0;
+        if (tupledesc.getFieldType(field) == Type.INT_TYPE) {
+            IntHistogram tempinthist = inthistMap.get(field);
+            return tempinthist.estimateSelectivity(op, constant.hashCode());
+        }
+        else {
+            StringHistogram tempstrhist = strhistMap.get(field);
+            return tempstrhist.estimateSelectivity(op, constant.toString());
+        }
+//        return 1.0;
     }
 
     /**
@@ -156,7 +244,7 @@ public class TableStats {
      * */
     public int totalTuples() {
         // some code goes here
-        return 0;
+        return numtuples;
     }
 
 }
