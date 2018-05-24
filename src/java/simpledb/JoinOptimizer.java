@@ -111,7 +111,8 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic
             // nested-loops join.
-            return -1.0;
+
+            return cost1 + card1 * cost2 + card1 * card2;
         }
     }
 
@@ -155,9 +156,49 @@ public class JoinOptimizer {
             String field2PureName, int card1, int card2, boolean t1pkey,
             boolean t2pkey, Map<String, TableStats> stats,
             Map<String, Integer> tableAliasToId) {
-        int card = 1;
-        // some code goes here
-        return card <= 0 ? 1 : card;
+//        int card = 1;
+//        // some code goes here
+//        if (joinOp == Predicate.Op.EQUALS) {
+//            if (t1pkey && t2pkey)
+//                card = (card1 > card2) ? card2 : card1;
+//            else if (t1pkey && !t2pkey)
+//                card = card2;
+//            else if (!t1pkey && t2pkey)
+//                card = card1;
+//            else {
+//                TableStats ts1 = stats.get(Database.getCatalog().getTableName(tableAliasToId.get(table1Alias)));
+//                TableStats ts2 = stats.get(Database.getCatalog().getTableName(tableAliasToId.get(table2Alias)));
+//                int ndv1 = ts1.getDistinctValueNum(field1PureName);
+//                int ndv2 = ts2.getDistinctValueNum(field2PureName);
+//                int maxndv = (ndv1 > ndv2) ? ndv1 : ndv2;
+//                card = card1 * card2 / maxndv;
+//            }
+//        }
+//        else
+//            card = (int)(card1 * card2 * 0.3);
+////        return card <= 0 ? 1 : card;
+//        return card;
+        int joinCardinality;
+        switch (joinOp) {
+            case EQUALS:
+                if (t1pkey && t2pkey) {
+                    joinCardinality = Math.min(card1, card2);
+                } else if (t1pkey && !t2pkey) {
+                    joinCardinality = card2;
+                } else if (!t1pkey && t2pkey) {
+                    joinCardinality = card1;
+                } else {
+                    joinCardinality = Math.max(card1, card2);
+                }
+                break;
+            case NOT_EQUALS:
+                joinCardinality = card1 * card2;
+                break;
+            default:
+                joinCardinality = (int) (0.5 * card1 * card2);
+                break;
+        }
+        return joinCardinality;
     }
 
     /**
@@ -221,7 +262,30 @@ public class JoinOptimizer {
 
         // some code goes here
         //Replace the following
-        return joins;
+        PlanCache pc = new PlanCache();
+        int numjoins = joins.size();
+        for (int i = 1; i <= numjoins; i++) {
+            Set<Set<LogicalJoinNode>> els = enumerateSubsets(joins, i);
+            Iterator<Set<LogicalJoinNode>> itr = els.iterator();
+            while (itr.hasNext()) {
+                Set<LogicalJoinNode> tempset = itr.next();
+                double bestCostSoFar = Double.MAX_VALUE;
+                CostCard bestPlanSoFar = null;
+                for (LogicalJoinNode ljn : tempset) {
+                    CostCard subplan = computeCostAndCardOfSubplan(stats, filterSelectivities, ljn, tempset, bestCostSoFar, pc);
+                    if (subplan != null && subplan.cost < bestCostSoFar) {
+                        bestCostSoFar = subplan.cost;
+                        bestPlanSoFar = subplan;
+                    }
+                }
+                if (bestPlanSoFar != null)
+                    pc.addPlan(tempset, bestPlanSoFar.cost, bestPlanSoFar.card, bestPlanSoFar.plan);
+            }
+        }
+        Vector<LogicalJoinNode> plan = pc.getOrder(new HashSet<LogicalJoinNode>(joins));
+        if (explain)
+            printJoins(plan, pc, stats, filterSelectivities);
+        return plan;
     }
 
     // ===================== Private Methods =================================

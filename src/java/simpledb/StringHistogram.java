@@ -89,4 +89,8 @@ public class StringHistogram {
     public double avgSelectivity() {
         return hist.avgSelectivity();
     }
+
+    public int getDistinctValueNum() {
+        return maxVal() - minVal() + 1;
+    }
 }

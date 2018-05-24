@@ -247,4 +247,16 @@ public class TableStats {
         return numtuples;
     }
 
+    public int getDistinctValueNum(String fieldname) {
+        int field = tupledesc.fieldNameToIndex(fieldname);
+        if (tupledesc.getFieldType(field) == Type.INT_TYPE) {
+            IntHistogram tempinthist = inthistMap.get(field);
+            return tempinthist.getDistinctValueNum();
+        }
+        else {
+            StringHistogram tempstrhist = strhistMap.get(field);
+            return tempstrhist.getDistinctValueNum();
+        }
+    }
+
 }

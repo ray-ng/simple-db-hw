@@ -179,4 +179,8 @@ public class IntHistogram {
         // some code goes here
         return null;
     }
+
+    public int getDistinctValueNum() {
+        return max - min + 1;
+    }
 }
