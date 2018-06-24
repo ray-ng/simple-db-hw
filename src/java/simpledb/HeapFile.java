@@ -1,6 +1,9 @@
 package simpledb;
 
 import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.util.*;
 
 /**
@@ -16,6 +19,8 @@ import java.util.*;
 public class HeapFile implements DbFile {
 
     private File storefile;
+//    private RandomAccessFile raf;
+//    private FileChannel fc;
     private TupleDesc tuple_desc;
 //    private int page_tuple_num;
 //    private int page_header_size;
@@ -35,7 +40,7 @@ public class HeapFile implements DbFile {
             this.pageopened = 0;
         }
 
-        public void open() throws DbException, TransactionAbortedException{
+        public void open() throws DbException, TransactionAbortedException {
             PageId pageid = new HeapPageId(getId(), 0);
             HeapPage filepage = (HeapPage)Database.getBufferPool().getPage(txnid, pageid, Permissions.READ_ONLY);
             fileitr = filepage.iterator();
@@ -91,6 +96,7 @@ public class HeapFile implements DbFile {
     public HeapFile(File f, TupleDesc td) {
         // some code goes here
         storefile = f;
+//        qssszwzraf.getChannel();
         tuple_desc = td;
 //        page_tuple_num = (BufferPool.getPageSize() * 8) / (tuple_desc.getSize() * 8 + 1);
 //        page_header_size = (int)Math.ceil(page_tuple_num / 8);
@@ -144,19 +150,47 @@ public class HeapFile implements DbFile {
         int pagenum = pid.getPageNumber();
         int pagesize = BufferPool.getPageSize();
         byte[] temp = new byte[pagesize];
+//        ByteBuffer tempbuffer = ByteBuffer.wrap(temp);
         HeapPage heapPage = null;
+//        FileLock fl = null;
+//        try {
+////            fl = fc.lock(pagenum * pagesize, pagesize, true);
+//            fl = fc.lock();
+//            fc.position(pagenum * pagesize);
+//            int cnt = fc.read(tempbuffer);
+//            fc.read(tempbuffer, pagenum * pagesize, pagesize);
         try {
             RandomAccessFile f = new RandomAccessFile(storefile, "r");
             f.seek(pagenum * pagesize);
             int cnt = 0;
             while (cnt != pagesize) {
-                cnt += f.read(temp, cnt, pagesize-cnt);
+                cnt += f.read(temp, cnt, pagesize - cnt);
             }
-            heapPage = new HeapPage((HeapPageId)pid, temp);
+            if (cnt == pagesize)
+                heapPage = new HeapPage((HeapPageId) pid, temp);
         }
         catch (IOException e) {
             e.printStackTrace();
         }
+        catch (IndexOutOfBoundsException e) {
+            heapPage = null;
+        }
+//            fl.release();
+//        }
+//        catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        finally {
+//            try {
+//                if (fl != null)
+//                    fl.release();
+//            }
+//            catch (IOException e) {
+//                e.printStackTrace();
+//            }
+////            fl.release();
+//        }
+
         return heapPage;
     }
 
@@ -167,15 +201,25 @@ public class HeapFile implements DbFile {
         int pagenum = page.getId().getPageNumber();
         HeapPage heappage = (HeapPage)page;
         byte[] temp = heappage.getPageData();
+//        ByteBuffer tempbuffer = ByteBuffer.wrap(temp);
         int pagesize = BufferPool.getPageSize();
-        try {
-            RandomAccessFile f = new RandomAccessFile(storefile, "rw");
-            f.seek(pagenum * pagesize);
-            f.write(temp);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
+//        FileLock fl = null;
+//        try {
+//            fl = fc.lock(pagenum * pagesize, pagesize, false);
+        RandomAccessFile f = new RandomAccessFile(storefile, "rw");
+        f.seek(pagenum * pagesize);
+        f.write(temp);
+//            fl = fc.lock();
+//            fc.position(pagenum * pagesize);
+//            fc.write(tempbuffer);
+//        }
+//        catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        finally {
+//            if (fl != null)
+//                fl.release();
+//        }
     }
 
     /**
@@ -183,7 +227,25 @@ public class HeapFile implements DbFile {
      */
     public int numPages() {
         // some code goes here
-        return (int)(storefile.length() / BufferPool.getPageSize());
+//        FileLock fl = null;
+//        int res = 0;
+//        try {
+//            fl = fc.lock(0L, Long.MAX_VALUE, true);
+//            res =  (int)(fc.size() / BufferPool.getPageSize());
+//        }
+//        catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        finally {
+//            try {
+//                if (fl != null)
+//                    fl.release();
+//            }
+//            catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
+        return (int)storefile.length() / BufferPool.getPageSize();
     }
 
     // see DbFile.java for javadocs
@@ -192,23 +254,37 @@ public class HeapFile implements DbFile {
         // some code goes here
         // not necessary for lab1
 //        System.out.println(numPages());
-        for (int i = 0; i < numPages(); ++i) {
+        int i = 0;
+        PageId pageid = null;
+//        for (int i = 0; i < numPages(); ++i) {
 //            System.out.println(i);
-            PageId pageid = new HeapPageId(getId(), i);
+        while (true) {
+            pageid = new HeapPageId(getId(), i);
+//            System.out.println("here");
             HeapPage filepage = (HeapPage) Database.getBufferPool().getPage(tid, pageid, Permissions.READ_WRITE);
 //            System.out.println(filepage);
             if (filepage.getNumEmptySlots() > 0 ) {
+//                System.out.println("here");
                 filepage.insertTuple(t);
+                filepage.markDirty(true, tid);
                 modifiedpage.add(filepage);
                 return modifiedpage;
             }
+            else {
+                Database.getBufferPool().releasePage(tid, pageid);
+                ++i;
+//                System.out.println(i);
+                //releasing lock codes need to be finished!!!
+            }
         }
-        HeapPageId hpid=new HeapPageId(getId(), numPages());
-        HeapPage hp=new HeapPage(hpid, HeapPage.createEmptyPageData());
-        hp.insertTuple(t);
-        writePage(hp);
-        modifiedpage.add(hp);
-        return modifiedpage;
+
+//        HeapPageId hpid=new HeapPageId(getId(), numPages());
+//        HeapPage hp=new HeapPage(hpid, HeapPage.createEmptyPageData());
+//        hp.insertTuple(t);
+//        hp.markDirty(true, tid);
+//        writePage(hp);
+//        modifiedpage.add(hp);
+//        return modifiedpage;
     }
 
     // see DbFile.java for javadocs
@@ -223,6 +299,7 @@ public class HeapFile implements DbFile {
 //        if (!tuplepage.isDirty().equals(tid))
 //            throw new DbException("cannot be deleted!");
         tuplepage.deleteTuple(t);
+        tuplepage.markDirty(true, tid);
         modifiedpage.add(tuplepage);
         return modifiedpage;
     }

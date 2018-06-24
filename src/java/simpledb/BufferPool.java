@@ -4,6 +4,7 @@ import java.io.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -28,26 +29,28 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
 
     private int numPages;
-    private LinkedHashMap<PageId, Integer> pageid2index;
-//    private LinkedHashMap<TransactionId, LinkedList<Integer> > txnid2index;
-//    private Object[] txnpages;
+    private Object bplock;
+    private ConcurrentHashMap<PageId, Page> bp;
+    private int bpcap;
+//    private class pageitem {
+//        public TransactionId txnid;
+//        public PageId pgid;
+//        public Permissions perms;
+//        public Page pagefile;
+//        public pageitem(TransactionId txnid, PageId pgid, Permissions perms, Page pagefile) {
+//            this.txnid = txnid;
+//            this.pgid = pgid;
+//            this.perms = perms;
+//            this.pagefile = pagefile;
+//        }
+//    }
 
-    private class pageitem {
-        public TransactionId txnid;
-        public PageId pgid;
-        public Permissions perms;
-        public Page pagefile;
-        public pageitem(TransactionId txnid, PageId pgid, Permissions perms, Page pagefile) {
-            this.txnid = txnid;
-            this.pgid = pgid;
-            this.perms = perms;
-            this.pagefile = pagefile;
-        }
-    }
-
-    private pageitem[] pagearray;
-    private Stack<Integer> valididx;
-    private LinkedList<Integer> invalididx;
+//    private pageitem[] pagearray;
+//    private Stack<Integer> valididx;
+//    private LinkedList<Integer> invalididx;
+//    private ConcurrentLinkedQueue<Page> mempages;
+    private ConcurrentHashMap<TransactionId, Set<PageId>> editedpagesoftxn;
+    private LockUtil lockutil;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -57,14 +60,20 @@ public class BufferPool {
     public BufferPool(int numPages) {
         // some code goes here
         this.numPages = numPages;
-        pagearray = new pageitem[numPages];
-        pageid2index = new LinkedHashMap<PageId, Integer>();
-//        txnid2index = new LinkedHashMap<TransactionId, LinkedList<Integer> >();
-        valididx = new Stack<Integer>();
-        for (int i = 0; i < numPages; ++i) {
-            valididx.push(i);
-        }
-        invalididx = new LinkedList<Integer>();
+//        pagearray = new pageitem[numPages];
+//        pageid2index = new LinkedHashMap<PageId, Integer>();
+////        txnid2index = new LinkedHashMap<TransactionId, LinkedList<Integer> >();
+//        valididx = new Stack<Integer>();
+//        for (int i = 0; i < numPages; ++i) {
+//            valididx.push(i);
+//        }
+//        invalididx = new LinkedList<Integer>();
+        this.bplock = new Object();
+        this.bp = new ConcurrentHashMap<PageId, Page>();
+        this.bpcap = 0;
+//        this.mempages = new ConcurrentLinkedQueue<Page>();
+        this.editedpagesoftxn = new ConcurrentHashMap<TransactionId, Set<PageId>>();
+        this.lockutil = new LockUtil();
 //        txnpages = new Object[numPages];
     }
     
@@ -80,6 +89,12 @@ public class BufferPool {
     // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
     public static void resetPageSize() {
     	BufferPool.pageSize = DEFAULT_PAGE_SIZE;
+    }
+
+    private Set<PageId> geteditedpagesoftxn(TransactionId tid) {
+        Set<PageId> pageset = new HashSet<PageId>();
+        editedpagesoftxn.putIfAbsent(tid, pageset);
+        return editedpagesoftxn.get(tid);
     }
 
     /**
@@ -100,47 +115,89 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        Page pagefile = null;
-//        synchronized (pid) {
-//            LinkedList<Integer> txnpages = txnid2index.get(tid);
-//            if (txnpages == null) {
-//                txnpages = new LinkedList<Integer>();
-//                txnid2index.put(tid, txnpages);
-//            }
-            Integer idx = pageid2index.get(pid);
-            if (idx == null) {
+        try {
+            Page pagefile = null;
+            Object pagelock = lockutil.AcquireLock(tid, pid, perm);
+            if (perm == Permissions.READ_WRITE)
+                geteditedpagesoftxn(tid).add(pid);
+
+            pagefile = bp.get(pid);
+            if (pagefile != null) {
+//                System.out.println("here");
+                return pagefile;
+            }
+
+            if (perm == Permissions.READ_WRITE) {
+//                System.out.println("here");
                 DbFile databasefile = Database.getCatalog().getDatabaseFile(pid.getTableId());
                 pagefile = databasefile.readPage(pid);
-                if (!valididx.isEmpty()) {
-                    Integer tempidx = valididx.pop();
-                    invalididx.add(tempidx);
-                    pageid2index.put(pid, tempidx);
-//                    txnpages.add(tempidx);
-//                    txnid2index.put(tid, tempidx);
-                    pagearray[tempidx] = new pageitem(tid, pid, perm, pagefile);
-                }
-                else {
-                    evictPage();
-                    if (!valididx.isEmpty()) {
-                        Integer tempidx = valididx.pop();
-                        invalididx.add(tempidx);
-                        pageid2index.put(pid, tempidx);
-//                    txnpages.add(tempidx);
-//                    txnid2index.put(tid, tempidx);
-                        pagearray[tempidx] = new pageitem(tid, pid, perm, pagefile);
+            } else {
+                synchronized (pagelock) {
+                    if ((pagefile = bp.get(pid)) == null) {
+                        DbFile databasefile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+                        pagefile = databasefile.readPage(pid);
+                        synchronized (bplock) {
+                            if (bpcap < numPages) {
+                                bp.put(pid, pagefile);
+                                ++bpcap;
+                            } else {
+                                evictPage();
+                                bp.put(pid, pagefile);
+                            }
+                        }
                     }
                 }
+                return pagefile;
             }
-            else {
-                pageitem temp = pagearray[idx];
-//                while ((temp.txnid != null) && (temp.txnid != tid))
-//                    pid.wait();
-//                temp.txnid = tid;
-//                temp.perms = perm;
-                pagefile = temp.pagefile;
+
+            if (pagefile == null) {
+                pagefile = new HeapPage((HeapPageId) pid, HeapPage.createEmptyPageData());
             }
+
+            synchronized (bplock) {
+                if (bpcap < numPages) {
+                    bp.put(pid, pagefile);
+                    ++bpcap;
+                } else {
+                    evictPage();
+                    bp.put(pid, pagefile);
+                }
+            }
+
+            return pagefile;
+        }
+        catch (IOException e) {
+            throw new DbException("IOException");
+        }
+        catch (InterruptedException e) {
+            throw new DbException("InterruptedException");
+        }
+//        Integer idx = pageid2index.get(pid);
+//        if (idx == null) {
+//            DbFile databasefile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+//            pagefile = databasefile.readPage(pid);
+//            if (!valididx.isEmpty()) {
+//                Integer tempidx = valididx.pop();
+//                invalididx.add(tempidx);
+//                pageid2index.put(pid, tempidx);
+//                pagearray[tempidx] = new pageitem(tid, pid, perm, pagefile);
+//            }
+//            else {
+//                evictPage();
+//                if (!valididx.isEmpty()) {
+//                    Integer tempidx = valididx.pop();
+//                    invalididx.add(tempidx);
+//                    pageid2index.put(pid, tempidx);
+//                    pagearray[tempidx] = new pageitem(tid, pid, perm, pagefile);
+//                }
+//            }
 //        }
-        return pagefile;
+//        else {
+//            pageitem temp = pagearray[idx];
+//            pagefile = temp.pagefile;
+//        }
+//
+//        return pagefile;
     }
 
     /**
@@ -155,6 +212,7 @@ public class BufferPool {
     public  void releasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
+        lockutil.releaselock(tid, pid);
     }
 
     /**
@@ -165,13 +223,15 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return false;
+//        return getpagesoftxn(tid).contains(p);
+        return lockutil.holdsLock(tid, p);
     }
 
     /**
@@ -185,6 +245,16 @@ public class BufferPool {
         throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        if (commit)
+            flushPages(tid);
+        synchronized (bplock) {
+            for (PageId pid : geteditedpagesoftxn(tid)) {
+                bp.remove(pid);
+                --bpcap;
+            }
+        }
+        editedpagesoftxn.remove(tid);
+        lockutil.releaselocks(tid);
     }
 
     /**
@@ -223,7 +293,7 @@ public class BufferPool {
      * @param tid the transaction deleting the tuple.
      * @param t the tuple to delete
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
+    public void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
@@ -239,15 +309,24 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for lab1
-        for (int i = 0; i < numPages; ++i) {
-            if (pagearray[i] != null) {
-                PageId pid = pagearray[i].pgid;
-                valididx.push(i);
-                invalididx.remove(i);
-                pagearray[i] = null;
-                pageid2index.put(pid, null);
+//        for (int i = 0; i < numPages; ++i) {
+//            if (pagearray[i] != null) {
+//                PageId pid = pagearray[i].pgid;
+//                valididx.push(i);
+//                invalididx.remove(i);
+//                pagearray[i] = null;
+//                pageid2index.put(pid, null);
+//            }
+//        }
+//        System.out.println(bp.size());
+        for (Page p : bp.values()) {
+            if (p != null && p.isDirty() != null) {
+                flushPage(p.getId());
             }
         }
+        bp.clear();
+        bpcap = 0;
+        editedpagesoftxn.clear();
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -261,54 +340,72 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
-        Integer idx = pageid2index.get(pid);
-        valididx.push(idx);
-        invalididx.remove(idx);
-        pagearray[idx] = null;
-        pageid2index.put(pid, null);
+//        Integer idx = pageid2index.get(pid);
+//        valididx.push(idx);
+//        invalididx.remove(idx);
+//        pagearray[idx] = null;
+//        pageid2index.put(pid, null);
     }
 
     /**
      * Flushes a certain page to disk
      * @param pid an ID indicating the page to flush
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
+    private void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
-        Integer idx = pageid2index.get(pid);
-        if (idx != null) {
-            DbFile databasefile = Database.getCatalog().getDatabaseFile(pid.getTableId());
-            Page pagefile = databasefile.readPage(pid);
-            if (pagefile.isDirty() != null) {
-                databasefile.writePage(pagefile);
-                pagefile.markDirty(false, null);
+//        Integer idx = pageid2index.get(pid);
+//        if (idx != null) {
+//            DbFile databasefile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+//            Page pagefile = databasefile.readPage(pid);
+//            if (pagefile.isDirty() != null) {
+//                databasefile.writePage(pagefile);
+//                pagefile.markDirty(false, null);
+//            }
+//        }
+        if (bp.get(pid) != null) {
+            if (bp.get(pid).isDirty() != null) {
+                DbFile pagefile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+                pagefile.writePage(bp.get(pid));
             }
         }
     }
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
+    public void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        for (PageId pid : geteditedpagesoftxn(tid)) {
+            flushPage(pid);
+        }
     }
 
     /**
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
-    private synchronized  void evictPage() throws DbException {
+    private synchronized  void evictPage() throws DbException, IOException {
         // some code goes here
         // not necessary for lab1
-        Integer idx = invalididx.getFirst();
-        PageId pageid = pagearray[idx].pgid;
-        try {
-            flushPage(pageid);
-            discardPage(pageid);
+//        Integer idx = invalididx.getFirst();
+//        PageId pageid = pagearray[idx].pgid;
+//        try {
+//            flushPage(pageid);
+//            discardPage(pageid);
+//        }
+//        catch (IOException e) {
+//            e.printStackTrace();
+//        }
+        for (Page p : bp.values()) {
+            if (p != null && p.isDirty() != null) {
+                continue;
+            }
+//            flushPage(p.getId());
+            bp.remove(p.getId());
+            return;
         }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
+        throw new DbException("no enough space");
     }
 
 }
