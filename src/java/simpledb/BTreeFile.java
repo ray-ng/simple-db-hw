@@ -24,6 +24,7 @@ public class BTreeFile implements DbFile {
 	private final TupleDesc td;
 	private final int tableid ;
 	private int keyField;
+	private Object rootPtrLock;
 
 	/**
 	 * Constructs a B+ tree file backed by the specified file.
@@ -38,6 +39,7 @@ public class BTreeFile implements DbFile {
 		this.tableid = f.getAbsoluteFile().hashCode();
 		this.keyField = key;
 		this.td = td;
+		this.rootPtrLock = new Object();
 	}
 
 	/**
@@ -184,24 +186,122 @@ public class BTreeFile implements DbFile {
 	 * If f is null, it finds the left-most leaf page -- used for the iterator
 	 * 
 	 * @param tid - the transaction id
-	 * @param dirtypages - the list of dirty pages which should be updated with all new dirty pages
+	 * @param dirtyPagesArr - the list of dirty pages which should be updated with all new dirty pages
 	 * @param pid - the current page being searched
 	 * @param perm - the permissions with which to lock the leaf page
 	 * @param f - the field to search for
 	 * @return the left-most leaf page possibly containing the key field f
 	 * 
 	 */
-	private BTreeLeafPage findLeafPage(TransactionId tid, HashMap<PageId, Page> dirtypages, BTreePageId pid, Permissions perm,
-			Field f) 
-					throws DbException, TransactionAbortedException {
+	private BTreeLeafPage findLeafPage(TransactionId tid, ArrayList<Page> dirtyPagesArr, BTreePageId pid, Permissions perm,
+			Field f) throws DbException, TransactionAbortedException {
 		// some code goes here
-        return null;
+		BTreePageId temppid = pid;
+		BTreePageId res = null;
+		BTreeLeafPage leafpage = null;
+		if (temppid.pgcateg() == BTreePageId.LEAF) {
+			if (perm == Permissions.READ_ONLY) {
+				leafpage = (BTreeLeafPage) Database.getBufferPool().getPage(tid, temppid, Permissions.READ_ONLY);
+				return leafpage;
+			}
+			leafpage = (BTreeLeafPage) Database.getBufferPool().getPage(tid, temppid, Permissions.READ_WRITE);
+			return leafpage;
+		}
+		BTreeInternalPage tempPage = (BTreeInternalPage) Database.getBufferPool().getPage(tid, temppid, Permissions.READ_ONLY);
+		Iterator<BTreeEntry> tempitr = tempPage.iterator();
+		BTreeEntry tempentry = null;
+		while (tempitr.hasNext()) {
+			tempentry = tempitr.next();
+			if (f == null || f.compare(Op.LESS_THAN_OR_EQ, tempentry.getKey())) {
+				res = tempentry.getLeftChild();
+				break;
+			}
+		}
+		if (res == null)
+			res = tempentry.getRightChild();
+		while (res.pgcateg() != BTreePageId.LEAF) {
+			tempPage = (BTreeInternalPage) Database.getBufferPool().getPage(tid, res, Permissions.READ_ONLY);
+			Database.getBufferPool().releasePage(tid, temppid);
+			temppid = res;
+			res = null;
+			tempitr = tempPage.iterator();
+			tempentry = null;
+			while (tempitr.hasNext()) {
+				tempentry = tempitr.next();
+				if (f == null || f.compare(Op.LESS_THAN_OR_EQ, tempentry.getKey())) {
+					res = tempentry.getLeftChild();
+					break;
+				}
+			}
+			if (res == null)
+				res = tempentry.getRightChild();
+		}
+		if (perm == Permissions.READ_ONLY) {
+			leafpage = (BTreeLeafPage) Database.getBufferPool().getPage(tid, res, Permissions.READ_ONLY);
+			Database.getBufferPool().releasePage(tid, temppid);
+			return leafpage;
+		}
+		leafpage = (BTreeLeafPage) Database.getBufferPool().getPage(tid, res, Permissions.READ_WRITE);
+		if (leafpage.getNumTuples() > leafpage.getMaxTuples()/2 && leafpage.getNumTuples() < leafpage.getMaxTuples()) {
+			Database.getBufferPool().releasePage(tid, temppid);
+			return leafpage;
+		}
+		Database.getBufferPool().releasePage(tid, res);
+		Database.getBufferPool().releasePage(tid, temppid);
+		temppid = pid;
+		res = null;
+		BTreePageId index = BTreeRootPtrPage.getId(tableid);
+		HashMap<PageId, Page> dirtypages = new HashMap<PageId, Page>();
+		while (temppid.pgcateg() != BTreePageId.LEAF) {
+			tempPage = (BTreeInternalPage) Database.getBufferPool().getPage(tid, temppid, Permissions.READ_WRITE);
+			dirtypages.put(temppid, tempPage);
+			if (tempPage.getNumEntries() > tempPage.getMaxEntries()/2 && tempPage.getNumEntries() < tempPage.getMaxEntries()) {
+				BTreePageId parentpage = tempPage.getParentId();
+				while (!parentpage.equals(index)) {
+					Database.getBufferPool().releasePage(tid, parentpage);
+					BTreeInternalPage temp = (BTreeInternalPage)dirtypages.get(parentpage);
+					parentpage = temp.getParentId();
+				}
+				index = tempPage.getParentId();
+			}
+			tempitr = tempPage.iterator();
+			tempentry = null;
+			while (tempitr.hasNext()) {
+				tempentry = tempitr.next();
+				if (f == null || f.compare(Op.LESS_THAN_OR_EQ, tempentry.getKey())) {
+					res = tempentry.getLeftChild();
+					break;
+				}
+			}
+			if (res == null)
+				res = tempentry.getRightChild();
+			temppid = res;
+			res = null;
+		}
+		leafpage = (BTreeLeafPage) Database.getBufferPool().getPage(tid, temppid, Permissions.READ_WRITE);
+		if (leafpage.getNumTuples() > leafpage.getMaxTuples()/2 && leafpage.getNumTuples() < leafpage.getMaxTuples()) {
+			BTreePageId parentpage = leafpage.getParentId();
+			while (!parentpage.equals(index)) {
+				Database.getBufferPool().releasePage(tid, parentpage);
+				BTreeInternalPage temp = (BTreeInternalPage)dirtypages.get(parentpage);
+				parentpage = temp.getParentId();
+			}
+			index = leafpage.getParentId();
+		}
+		dirtyPagesArr.add(leafpage);
+		BTreePageId parentpage = leafpage.getParentId();
+		while (!parentpage.equals(index)) {
+			BTreeInternalPage temp = (BTreeInternalPage)dirtypages.get(parentpage);
+			dirtyPagesArr.add(temp);
+			parentpage = temp.getParentId();
+		}
+		return leafpage;
 	}
 	
 	/**
 	 * Convenience method to find a leaf page when there is no dirtypages HashMap.
 	 * Used by the BTreeFile iterator.
-	 * @see #findLeafPage(TransactionId, HashMap, BTreePageId, Permissions, Field)
+	 * @see #findLeafPage(TransactionId, ArrayList, BTreePageId, Permissions, Field)
 	 * 
 	 * @param tid - the transaction id
 	 * @param pid - the current page being searched
@@ -213,7 +313,7 @@ public class BTreeFile implements DbFile {
 	BTreeLeafPage findLeafPage(TransactionId tid, BTreePageId pid, Permissions perm,
 			Field f) 
 					throws DbException, TransactionAbortedException {
-		return findLeafPage(tid, new HashMap<PageId, Page>(), pid, perm, f);
+		return findLeafPage(tid, new ArrayList<Page>(), pid, perm, f);
 	}
 
 	/**
@@ -441,15 +541,16 @@ public class BTreeFile implements DbFile {
 		BTreeRootPtrPage rootPtr = getRootPtrPage(tid, dirtypages);
 		BTreePageId rootId = rootPtr.getRootId();
 
-		if(rootId == null) { // the root has just been created, so set the root pointer to point to it		
-			rootId = new BTreePageId(tableid, numPages(), BTreePageId.LEAF);
-			rootPtr = (BTreeRootPtrPage) getPage(tid, dirtypages, BTreeRootPtrPage.getId(tableid), Permissions.READ_WRITE);
-			rootPtr.setRootId(rootId);
-		}
+//		if(rootId == null) { // the root has just been created, so set the root pointer to point to it
+//			rootId = new BTreePageId(tableid, numPages(), BTreePageId.LEAF);
+//			rootPtr = (BTreeRootPtrPage) getPage(tid, dirtypages, BTreeRootPtrPage.getId(tableid), Permissions.READ_WRITE);
+//			rootPtr.setRootId(rootId);
+//		}
 
 		// find and lock the left-most leaf page corresponding to the key field,
 		// and split the leaf page if there are no more slots available
-		BTreeLeafPage leafPage = findLeafPage(tid, dirtypages, rootId, Permissions.READ_WRITE, t.getField(keyField));
+		ArrayList<Page> dirtyPagesArr = new ArrayList<Page>();
+		BTreeLeafPage leafPage = findLeafPage(tid, dirtyPagesArr, rootId, Permissions.READ_WRITE, t.getField(keyField));
 		if(leafPage.getNumEmptySlots() == 0) {
 			leafPage = splitLeafPage(tid, dirtypages, leafPage, t.getField(keyField));	
 		}
@@ -457,8 +558,8 @@ public class BTreeFile implements DbFile {
 		// insert the tuple into the leaf page
 		leafPage.insertTuple(t);
 
-		ArrayList<Page> dirtyPagesArr = new ArrayList<Page>();
-		dirtyPagesArr.addAll(dirtypages.values());
+//		ArrayList<Page> dirtyPagesArr = new ArrayList<Page>();
+//		dirtyPagesArr.addAll(dirtypages.values());
 		return dirtyPagesArr;
 	}
 	
@@ -851,8 +952,11 @@ public class BTreeFile implements DbFile {
 				BufferedOutputStream bw = new BufferedOutputStream(
 						new FileOutputStream(f, true));
 				byte[] emptyRootPtrData = BTreeRootPtrPage.createEmptyPageData();
+				BTreeRootPtrPage tempptrpage = new BTreeRootPtrPage(BTreeRootPtrPage.getId(tableid), emptyRootPtrData);
+				tempptrpage.setRootId(new BTreePageId(tableid, 1, BTreePageId.LEAF));
+				byte[] tempRootPtrData = tempptrpage.getPageData();
 				byte[] emptyLeafData = BTreeLeafPage.createEmptyPageData();
-				bw.write(emptyRootPtrData);
+				bw.write(tempRootPtrData);
 				bw.write(emptyLeafData);
 				bw.close();
 			}
@@ -879,16 +983,22 @@ public class BTreeFile implements DbFile {
 		// get a read lock on the root pointer page and use it to locate the first header page
 		BTreeRootPtrPage rootPtr = getRootPtrPage(tid, dirtypages);
 		BTreePageId headerId = rootPtr.getHeaderId();
+
+		Database.getBufferPool().releasePage(tid, BTreeRootPtrPage.getId(tableid));
+
 		int emptyPageNo = 0;
 
 		if(headerId != null) {
-			BTreeHeaderPage headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_ONLY);
+//			BTreeHeaderPage headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_ONLY);
+			BTreeHeaderPage headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_WRITE);
 			int headerPageCount = 0;
 			// try to find a header page with an empty slot
 			while(headerPage != null && headerPage.getEmptySlot() == -1) {
+				Database.getBufferPool().releasePage(tid, headerId);
 				headerId = headerPage.getNextPageId();
 				if(headerId != null) {
-					headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_ONLY);
+					//			BTreeHeaderPage headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_ONLY);
+					headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_WRITE);
 					headerPageCount++;
 				}
 				else {
@@ -898,9 +1008,10 @@ public class BTreeFile implements DbFile {
 
 			// if headerPage is not null, it must have an empty slot
 			if(headerPage != null) {
-				headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_WRITE);
+//				headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_WRITE);
 				int emptySlot = headerPage.getEmptySlot();
 				headerPage.markSlotUsed(emptySlot, true);
+				Database.getBufferPool().releasePage(tid, headerId);
 				emptyPageNo = headerPageCount * BTreeHeaderPage.getNumSlots() + emptySlot;
 			}
 		}
@@ -1003,20 +1114,27 @@ public class BTreeFile implements DbFile {
 		// if there are no header pages, create the first header page and update
 		// the header pointer in the BTreeRootPtrPage
 		if(headerId == null) {
-			rootPtr = (BTreeRootPtrPage) getPage(tid, dirtypages, BTreeRootPtrPage.getId(tableid), Permissions.READ_WRITE);
-			
-			BTreeHeaderPage headerPage = (BTreeHeaderPage) getEmptyPage(tid, dirtypages, BTreePageId.HEADER);
-			headerId = headerPage.getId();
-			headerPage.init();
-			rootPtr.setHeaderId(headerId);
+//			rootPtr = (BTreeRootPtrPage) getPage(tid, dirtypages, BTreeRootPtrPage.getId(tableid), Permissions.READ_WRITE);
+			synchronized (rootPtrLock) {
+				if (headerId == null) {
+					BTreeHeaderPage headerPage = (BTreeHeaderPage) getEmptyPage(tid, dirtypages, BTreePageId.HEADER);
+					headerId = headerPage.getId();
+					headerPage.init();
+					rootPtr.setHeaderId(headerId);
+				}
+			}
 		}
+
+		Database.getBufferPool().releasePage(tid, BTreeRootPtrPage.getId(tableid));
 
 		// iterate through all the existing header pages to find the one containing the slot
 		// corresponding to emptyPageNo
 		while(headerId != null && (headerPageCount + 1) * BTreeHeaderPage.getNumSlots() < emptyPageNo) {
 			BTreeHeaderPage headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_ONLY);
+//			BTreeHeaderPage headerPage = (BTreeHeaderPage) getPage(tid, dirtypages, headerId, Permissions.READ_WRITE);
 			prevId = headerId;
 			headerId = headerPage.getNextPageId();
+			Database.getBufferPool().releasePage(tid, headerId);
 			headerPageCount++;
 		}
 
@@ -1025,13 +1143,14 @@ public class BTreeFile implements DbFile {
 		// Add header pages until we have one with a slot corresponding to emptyPageNo
 		while((headerPageCount + 1) * BTreeHeaderPage.getNumSlots() < emptyPageNo) {
 			BTreeHeaderPage prevPage = (BTreeHeaderPage) getPage(tid, dirtypages, prevId, Permissions.READ_WRITE);
-			
-			BTreeHeaderPage headerPage = (BTreeHeaderPage) getEmptyPage(tid, dirtypages, BTreePageId.HEADER);
-			headerId = headerPage.getId();
-			headerPage.init();
-			headerPage.setPrevPageId(prevId);
-			prevPage.setNextPageId(headerId);
-			
+			if ((headerId = prevPage.getNextPageId()) == null) {
+				BTreeHeaderPage headerPage = (BTreeHeaderPage) getEmptyPage(tid, dirtypages, BTreePageId.HEADER);
+				headerId = headerPage.getId();
+				headerPage.init();
+				headerPage.setPrevPageId(prevId);
+				prevPage.setNextPageId(headerId);
+			}
+			Database.getBufferPool().releasePage(tid, prevId);
 			headerPageCount++;
 			prevId = headerId;
 		}
