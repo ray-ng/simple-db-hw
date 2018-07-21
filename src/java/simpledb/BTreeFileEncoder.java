@@ -24,7 +24,7 @@ public class BTreeFileEncoder {
 	 * @return the BTreeFile
 	 */
 	public static BTreeFile convert(ArrayList<ArrayList<Integer>> tuples, File hFile, 
-			File bFile, int keyField, int numFields) throws IOException {
+			File bFile, int keyField, int numFields) throws IOException, DbException {
 		File tempInput = File.createTempFile("tempTable", ".txt");
 		tempInput.deleteOnExit();
 		BufferedWriter bw = new BufferedWriter(new FileWriter(tempInput));
@@ -60,7 +60,7 @@ public class BTreeFileEncoder {
 	 */
 	public static BTreeFile convert(File inFile, File hFile, File bFile,
 			int keyField, int numFields)
-					throws IOException {
+					throws IOException, DbException {
 		// convert the inFile to HeapFile first.
 		HeapFileEncoder.convert(inFile, hFile, BufferPool.getPageSize(), numFields);
 		HeapFile heapf = Utility.openHeapFile(numFields, hFile);
@@ -327,7 +327,7 @@ public class BTreeFileEncoder {
 		byte[] rootPtrBytes = convertToRootPtrPage(root, rootCategory, 0);
 		bf.writePage(new BTreeRootPtrPage(BTreeRootPtrPage.getId(tableid), rootPtrBytes));
 
-		// set all the parent and sibling pointers
+//		 set all the parent and sibling pointers
 		setParents(bf, new BTreePageId(tableid, root, rootCategory), BTreeRootPtrPage.getId(tableid));
 		setRightSiblingPtrs(bf, lastPid, null);
 

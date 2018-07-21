@@ -29,6 +29,7 @@ public class TransactionTest extends TestUtil.CreateHeapFile {
       empty.insertTuple(tid, Utility.getHeapTuple(i, 2));
     }
 
+    bp.flushAllPages();
     // if this fails, complain to the TA
     assertEquals(3, empty.numPages());
 

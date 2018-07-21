@@ -36,6 +36,8 @@ public class DeadlockTest extends TestUtil.CreateHeapFile {
       empty.insertTuple(tid, Utility.getHeapTuple(i, 2));
     }
 
+    bp.flushAllPages();
+
     // if this fails, complain to the TA
     assertEquals(3, empty.numPages());
 
@@ -184,6 +186,7 @@ public class DeadlockTest extends TestUtil.CreateHeapFile {
       Thread.sleep(POLL_INTERVAL);
 
       assertFalse(lg1Write.acquired() && lg2Write.acquired());
+//      System.out.println("here");
       if (lg1Write.acquired() && !lg2Write.acquired()) break;
       if (!lg1Write.acquired() && lg2Write.acquired()) break;
 

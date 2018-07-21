@@ -52,7 +52,8 @@ public class AggregateTest extends SimpleDbTestBase {
                     "b", 2,
                     "b", 4,
                     "b", 6,
-                    "c", 7 });
+                    "c", 7,
+                    "d", 9 });
 
     this.sum = TestUtil.createTupleList(width1,
         new int[] { 1, 12,
@@ -61,7 +62,8 @@ public class AggregateTest extends SimpleDbTestBase {
     this.sumstring = TestUtil.createTupleList(width1,
         new Object[] { "a", 12,
                     "b", 12,
-                    "c", 7 });
+                    "c", 7 ,
+                    "d", 9 });
 
     this.avg = TestUtil.createTupleList(width1,
         new int[] { 1, 4,

@@ -103,6 +103,7 @@ public class SystemTestUtil {
 
     public static void matchTuples(DbFile f, TransactionId tid, List<ArrayList<Integer>> tuples)
             throws DbException, TransactionAbortedException, IOException {
+//        System.out.println(tuples.size());
         SeqScan scan = new SeqScan(tid, f.getId(), "");
         matchTuples(scan, tuples);
     }
@@ -110,7 +111,7 @@ public class SystemTestUtil {
     public static void matchTuples(OpIterator iterator, List<ArrayList<Integer>> tuples)
             throws DbException, TransactionAbortedException, IOException {
         ArrayList<ArrayList<Integer>> copy = new ArrayList<ArrayList<Integer>>(tuples);
-
+//System.out.println(copy.size());
         if (Debug.isEnabled()) {
             Debug.log("Expected tuples:");
             for (ArrayList<Integer> t : copy) {
@@ -123,13 +124,15 @@ public class SystemTestUtil {
             Tuple t = iterator.next();
             ArrayList<Integer> list = tupleToList(t);
             boolean isExpected = copy.remove(list);
+//            System.out.println(copy.size());
             Debug.log("scanned tuple: %s (%s)", t, isExpected ? "expected" : "not expected");
             if (!isExpected) {
+//                System.out.println("here");
                 Assert.fail("expected tuples does not contain: " + t);
             }
         }
         iterator.close();
-
+//System.out.println("here" + copy.size());
         if (!copy.isEmpty()) {
             String msg = "expected to find the following tuples:\n";
             final int MAX_TUPLES_OUTPUT = 10;

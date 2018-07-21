@@ -421,15 +421,16 @@ public class BTreeUtility {
 	 * @param keyField the field the B+ tree is keyed on
 	 * @return the opened table.
 	 */
-	public static BTreeFile openBTreeFile(int cols, File f, int keyField) {
+	public static BTreeFile openBTreeFile(int cols, File f, int keyField) throws java.io.IOException, DbException {
 		// create the BTreeFile and add it to the catalog
 		TupleDesc td = Utility.getTupleDesc(cols);
+		Database.getCatalog().addTable(f.getAbsoluteFile().hashCode(), td);
 		BTreeFile bf = new BTreeFile(f, keyField, td);
 		Database.getCatalog().addTable(bf, UUID.randomUUID().toString());
 		return bf;
 	}
 
-	public static BTreeFile openBTreeFile(int cols, String colPrefix, File f, int keyField) {
+	public static BTreeFile openBTreeFile(int cols, String colPrefix, File f, int keyField) throws java.io.IOException, DbException {
 		// create the BTreeFile and add it to the catalog
 		TupleDesc td = Utility.getTupleDesc(cols, colPrefix);
 		BTreeFile bf = new BTreeFile(f, keyField, td);
@@ -444,7 +445,7 @@ public class BTreeUtility {
 	 * the specified number of columns as IntFields indexed on the keyField.
 	 */
 	public static BTreeFile createEmptyBTreeFile(String path, int cols, int keyField)
-			throws IOException {
+			throws IOException, DbException {
 		File f = new File(path);
 		// touch the file
 		FileOutputStream fos = new FileOutputStream(f);
@@ -463,7 +464,7 @@ public class BTreeUtility {
 	 * the specified number of columns as IntFields indexed on the keyField.
 	 */
 	public static BTreeFile createEmptyBTreeFile(String path, int cols, int keyField, int pages)
-			throws IOException {
+			throws IOException, DbException {
 		File f = new File(path);
 		BufferedOutputStream bw = new BufferedOutputStream(
 				new FileOutputStream(f, true));
@@ -675,7 +676,7 @@ public class BTreeUtility {
 		/**
 		 * @param bf the B+ tree file into which we want to insert the tuple
 		 * @param tupdata the data of the tuple to insert
-		 * @param the list of tuples that were successfully inserted
+		 * @param insertedTuples the list of tuples that were successfully inserted
 		 */
 		public BTreeInserter(BTreeFile bf, int[] tupdata, BlockingQueue<ArrayList<Integer>> insertedTuples) {
 			init(bf, tupdata, insertedTuples);
@@ -762,7 +763,7 @@ public class BTreeUtility {
 
 		/**
 		 * @param bf the B+ tree file from which we want to delete the tuple(s)
-		 * @param the list of tuples to delete
+		 * @param insertedTuples the list of tuples to delete
 		 */
 		public BTreeDeleter(BTreeFile bf, BlockingQueue<ArrayList<Integer>> insertedTuples) {
 			init(bf, insertedTuples);

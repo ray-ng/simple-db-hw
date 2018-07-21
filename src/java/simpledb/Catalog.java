@@ -20,6 +20,7 @@ public class Catalog {
 
     private LinkedHashMap<Integer, CLItem> table_list_id;
     private LinkedHashMap<String,CLItem> table_list_name;
+    private LinkedHashMap<Integer, TupleDesc> id_to_td;
 
     /**
      * Constructor.
@@ -29,6 +30,7 @@ public class Catalog {
         // some code goes here
         table_list_id = new LinkedHashMap<Integer, CLItem>();
         table_list_name = new LinkedHashMap<String, CLItem>();
+        id_to_td = new LinkedHashMap<Integer, TupleDesc>();
     }
 
     private class CLItem {
@@ -60,6 +62,11 @@ public class Catalog {
     public void addTable(DbFile file, String name) {
 
         addTable(file, name, "");
+    }
+
+    public void addTable(int tableid, TupleDesc td) {
+
+        id_to_td.put(tableid, td);
     }
 
     /**
@@ -95,6 +102,9 @@ public class Catalog {
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
         // some code goes here
+        TupleDesc res = id_to_td.get(tableid);
+        if (res != null)
+            return res;
         CLItem temp = table_list_id.get(tableid);
         if (temp == null)
             throw new NoSuchElementException("no such table!");

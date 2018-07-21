@@ -22,6 +22,8 @@ public class LockingTest extends TestUtil.CreateHeapFile {
   @Before public void setUp() throws Exception {
     super.setUp();
 
+//    System.out.print(empty.numPages() + "   ");
+
     // clear all state from the buffer pool
     bp = Database.resetBufferPool(BufferPool.DEFAULT_PAGES);
 
@@ -31,6 +33,10 @@ public class LockingTest extends TestUtil.CreateHeapFile {
     for (int i = 0; i < 1025; ++i) {
       empty.insertTuple(tid, Utility.getHeapTuple(i, 2));
     }
+
+    bp.flushAllPages();
+
+//    System.out.println(empty.numPages());
 
     // if this fails, complain to the TA
     assertEquals(3, empty.numPages());
@@ -47,6 +53,9 @@ public class LockingTest extends TestUtil.CreateHeapFile {
     bp.getPage(tid, p1, Permissions.READ_WRITE).markDirty(true, tid);
     bp.getPage(tid, p2, Permissions.READ_WRITE).markDirty(true, tid);
     bp.flushAllPages();
+
+//    System.out.println(empty.numPages());
+
     bp = Database.resetBufferPool(BufferPool.DEFAULT_PAGES);
   }
 
@@ -101,6 +110,7 @@ public class LockingTest extends TestUtil.CreateHeapFile {
    * Acquires two read locks on the same page.
    */
   @Test public void acquireReadLocksOnSamePage() throws Exception {
+//    System.out.println("here");
     metaLockTester(tid1, p0, Permissions.READ_ONLY,
                    tid2, p0, Permissions.READ_ONLY, true);
   }

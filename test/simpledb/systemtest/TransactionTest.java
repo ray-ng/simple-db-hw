@@ -208,22 +208,26 @@ public class TransactionTest extends SimpleDbTestBase {
     
     @Test public void testSingleThread()
             throws IOException, DbException, TransactionAbortedException {
-        validateTransactions(1);
+        for (int i = 0; i < 80; ++i) {
+            validateTransactions(3);
+            System.out.print(i + "---");
+        }
+        System.out.println();
     }
 
     @Test public void testTwoThreads()
             throws IOException, DbException, TransactionAbortedException {
-        validateTransactions(2);
+        validateTransactions(6);
     }
-
+//
     @Test public void testFiveThreads()
             throws IOException, DbException, TransactionAbortedException {
-        validateTransactions(5);
+        validateTransactions(6);
     }
-    
+
     @Test public void testTenThreads()
     throws IOException, DbException, TransactionAbortedException {
-        validateTransactions(10);
+        validateTransactions(7);
     }
 
     @Test public void testAllDirtyFails()

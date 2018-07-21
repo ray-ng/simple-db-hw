@@ -16,7 +16,7 @@ public class DeleteTest extends FilterBase {
         Filter filter = new Filter(predicate, ss);
         Delete deleteOperator = new Delete(tid, filter);
 //        Query q = new Query(deleteOperator, tid);
-
+//
 //        q.start();
         deleteOperator.open();
         boolean hasResult = false;
@@ -31,15 +31,19 @@ public class DeleteTest extends FilterBase {
         assertTrue(hasResult);
 
         deleteOperator.close();
-
+//System.out.println(result);
         // As part of the same transaction, scan the table
         if (result == 0) {
             // Deleted zero tuples: all tuples still in table
             expectedTuples = createdTuples;
         } else {
+//            System.out.println(result);
+//            System.out.println(createdTuples.size());
             assert result == createdTuples.size();
             expectedTuples = new ArrayList<ArrayList<Integer>>();
         }
+
+//        System.out.println(expectedTuples.size());
         SystemTestUtil.matchTuples(table, tid, expectedTuples);
         return result;
     }

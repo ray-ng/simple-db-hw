@@ -59,7 +59,7 @@ public class BTreeChecker {
     public static void checkRep(BTreeFile bt, TransactionId tid, HashMap<PageId, Page> dirtypages,
                                 boolean checkOccupancy) throws
             DbException, IOException, TransactionAbortedException {
-        BTreeRootPtrPage rtptr = bt.getRootPtrPage(tid, dirtypages);
+        BTreeRootPtrPage rtptr = bt.getRootPtrPage(tid);
 
         if (rtptr.getRootId() == null) { // non existent root is a legal state.
             return;
@@ -75,7 +75,7 @@ public class BTreeChecker {
                                        BTreePageId pageId, Field lowerBound, Field upperBound,
                                        BTreePageId parentId, boolean checkOccupancy, int depth) throws
             TransactionAbortedException, DbException {
-        BTreePage page = (BTreePage )bt.getPage(tid, dirtypages, pageId, Permissions.READ_ONLY);
+        BTreePage page = (BTreePage )bt.getPage(tid, pageId, Permissions.READ_ONLY);
         assert(page.getParentId().equals(parentId));
 
         if (page.getId().pgcateg() == BTreePageId.LEAF) {
