@@ -319,7 +319,10 @@ public class LogFile {
     /** Checkpoint the log and write a checkpoint record. */
     public void logCheckpoint() throws IOException {
         //make sure we have buffer pool lock before proceeding
-        synchronized (Database.getBufferPool()) {
+//        synchronized (Database.getBufferPool()) {
+
+            Database.getBufferPool().rwl.writeLock().lock();
+
             synchronized (this) {
                 //Debug.log("CHECKPOINT, offset = " + raf.getFilePointer());
                 preAppend();
@@ -352,7 +355,10 @@ public class LogFile {
                 currentOffset = raf.getFilePointer();
                 //Debug.log("CP OFFSET = " + currentOffset);
             }
-        }
+
+            Database.getBufferPool().rwl.writeLock().unlock();
+
+//        }
 
         logTruncate();
     }
@@ -463,12 +469,18 @@ public class LogFile {
     */
     public void rollback(TransactionId tid)
         throws NoSuchElementException, IOException {
-        synchronized (Database.getBufferPool()) {
-            synchronized(this) {
+//        synchronized (Database.getBufferPool()) {
+
+        Database.getBufferPool().rwl.writeLock().lock();
+
+        synchronized(this) {
                 preAppend();
                 // some code goes here
-            }
         }
+
+        Database.getBufferPool().rwl.writeLock().unlock();
+
+//        }
     }
 
     /** Shutdown the logging system, writing out whatever state
@@ -490,12 +502,18 @@ public class LogFile {
         updates of uncommitted transactions are not installed.
     */
     public void recover() throws IOException {
-        synchronized (Database.getBufferPool()) {
-            synchronized (this) {
+//        synchronized (Database.getBufferPool()) {
+
+        Database.getBufferPool().rwl.writeLock().lock();
+
+        synchronized (this) {
                 recoveryUndecided = false;
                 // some code goes here
             }
-         }
+
+        Database.getBufferPool().rwl.writeLock().unlock();
+
+//         }
     }
 
     /** Print out a human readable represenation of the log */

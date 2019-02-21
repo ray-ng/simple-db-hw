@@ -4,7 +4,8 @@ import java.io.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -27,6 +28,8 @@ public class BufferPool {
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
+
+    public final ReentrantReadWriteLock rwl = new ReentrantReadWriteLock();
 
     private int numPages;
     private Object bplock;
@@ -116,6 +119,8 @@ public class BufferPool {
         throws TransactionAbortedException, DbException {
         // some code goes here
         try {
+            rwl.readLock().lock();
+
             Page pagefile = null;
             Object pagelock = lockutil.AcquireLock(tid, pid, perm);
             if (perm == Permissions.READ_WRITE)
@@ -163,6 +168,8 @@ public class BufferPool {
                     bp.put(pid, pagefile);
                 }
             }
+            
+            rwl.readLock().unlock();
 
             return pagefile;
         }
