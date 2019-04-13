@@ -128,8 +128,10 @@ public class BufferPool {
             pagefile = bp.get(pid);
             if (pagefile != null) {
 //                System.out.println("here");
-                rwl.readLock().lock();
-                
+                if (perm == Permissions.READ_WRITE) {
+                    pagefile.markDirty(true, tid);
+                    rwl.readLock().lock();
+                }
                 return pagefile;
             }
 
@@ -162,10 +164,12 @@ public class BufferPool {
 
             synchronized (bplock) {
                 if (bpcap < numPages) {
+                    pagefile.markDirty(true, tid);
                     bp.put(pid, pagefile);
                     ++bpcap;
                 } else {
                     evictPage();
+                    pagefile.markDirty(true, tid);
                     bp.put(pid, pagefile);
                 }
             }
