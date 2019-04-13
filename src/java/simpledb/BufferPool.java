@@ -119,7 +119,6 @@ public class BufferPool {
         throws TransactionAbortedException, DbException {
         // some code goes here
         try {
-            rwl.readLock().lock();
 
             Page pagefile = null;
             Object pagelock = lockutil.AcquireLock(tid, pid, perm);
@@ -129,6 +128,8 @@ public class BufferPool {
             pagefile = bp.get(pid);
             if (pagefile != null) {
 //                System.out.println("here");
+                rwl.readLock().lock();
+                
                 return pagefile;
             }
 
@@ -169,7 +170,7 @@ public class BufferPool {
                 }
             }
             
-            rwl.readLock().unlock();
+            rwl.readLock().lock();
 
             return pagefile;
         }

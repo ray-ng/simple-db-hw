@@ -220,6 +220,8 @@ public class HeapFile implements DbFile {
 //            if (fl != null)
 //                fl.release();
 //        }
+
+        Database.getBufferPool().rwl.readlock().unlock();
     }
 
     /**
